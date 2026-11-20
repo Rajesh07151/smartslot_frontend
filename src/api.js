@@ -48,6 +48,17 @@ export const api = {
     return json.data;
   },
 
+  async staffLogin(email, password) {
+    const res = await fetch(`${BASE_URL}/auth/staff-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Staff authentication failed');
+    return json.data;
+  },
+
   async getMe() {
     const res = await fetch(`${BASE_URL}/auth/me`, {
       headers: getHeaders()
@@ -163,11 +174,28 @@ export const api = {
     return json.data;
   },
 
+  // Health Check
+  async checkHealth() {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(`${BASE_URL}/health`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
   // Appointments
-  async createAppointment(payload) {
+  async createAppointment(payload, idempotencyKey = null) {
+    const customHeaders = {};
+    if (idempotencyKey) {
+      customHeaders['Idempotency-Key'] = idempotencyKey;
+    }
     const res = await fetch(`${BASE_URL}/appointments`, {
       method: 'POST',
-      headers: getHeaders(),
+      headers: getHeaders(customHeaders),
       body: JSON.stringify(payload)
     });
     const json = await res.json();

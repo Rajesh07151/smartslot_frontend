@@ -12,11 +12,19 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [serverWakingUp, setServerWakingUp] = useState(false);
 
   // Data
   const [services, setServices] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedService, setSelectedService] = useState(null);
+  const [selectedServices, setSelectedServices] = useState([]); // Array of selected services (supports multi-service selection)
+
+  // Derived multi-service values
+  const selectedService = selectedServices[0] || null;
+  const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0);
+  const totalPrice = selectedServices.reduce((sum, s) => sum + s.price, 0);
+  const combinedServiceNames = selectedServices.map(s => s.name).join(' + ');
+  const serviceIdsParam = selectedServices.map(s => s.id).join(',');
 
   const [staffList, setStaffList] = useState([]);
   const [selectedStaffId, setSelectedStaffId] = useState('any'); // 'any' or staff.id
@@ -29,11 +37,13 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
   const [availabilityData, setAvailabilityData] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [holdInfo, setHoldInfo] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(null); // in seconds
 
-  // Checkout session ID for slot reservation
+  // Checkout session ID for slot reservation and idempotency key
   const [sessionId] = useState(() => 'sess-' + Math.random().toString(36).substring(2, 9));
+  const [idempotencyKey] = useState(() => 'idem-' + Math.random().toString(36).substring(2, 11) + '-' + Date.now());
 
-  // Customer form details
+  // Customer form details and inline field validation
   const [customerDetails, setCustomerDetails] = useState({
     name: '',
     email: '',
@@ -41,27 +51,80 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
     vehicle: '',
     notes: ''
   });
+  const [fieldErrors, setFieldErrors] = useState({
+    name: null,
+    email: null,
+    phone: null
+  });
 
   // Confirmed booking state
   const [confirmedBooking, setConfirmedBooking] = useState(null);
 
-  // Load services and staff on mount
+  // Countdown timer for 5-minute slot hold
   useEffect(() => {
-    async function loadInitialData() {
-      try {
-        setLoading(true);
-        const [servicesData, staffData] = await Promise.all([
-          api.getServices(),
-          api.getStaff()
-        ]);
-        setServices(servicesData);
-        setStaffList(staffData);
-      } catch (err) {
-        setError('Failed to load services and technician data. Please check if backend is running.');
-      } finally {
-        setLoading(false);
-      }
+    if (!holdInfo || !holdInfo.expiresAt) {
+      setTimeLeft(null);
+      return;
     }
+
+    const calcRemaining = () => Math.max(0, Math.floor((holdInfo.expiresAt - Date.now()) / 1000));
+    setTimeLeft(calcRemaining());
+
+    const interval = setInterval(() => {
+      const remaining = calcRemaining();
+      setTimeLeft(remaining);
+      if (remaining <= 0) {
+        clearInterval(interval);
+        setHoldInfo(null);
+        setSelectedSlot(null);
+        setError('Your 5-minute temporary slot hold has expired. Please select a slot again to reserve.');
+        fetchSlots();
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [holdInfo]);
+
+  // Helper to format remaining seconds as mm:ss
+  const formatTimeLeft = (seconds) => {
+    if (seconds === null || seconds === undefined) return null;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  // Load services and staff on mount with cold-start detection
+  const loadInitialData = async () => {
+    let wakeUpTimer = null;
+    try {
+      setLoading(true);
+      setError(null);
+      setServerWakingUp(false);
+
+      wakeUpTimer = setTimeout(() => {
+        setServerWakingUp(true);
+      }, 3500);
+
+      const [servicesData, staffData] = await Promise.all([
+        api.getServices(),
+        api.getStaff()
+      ]);
+
+      if (wakeUpTimer) clearTimeout(wakeUpTimer);
+      setServices(servicesData);
+      setStaffList(staffData);
+      setServerWakingUp(false);
+    } catch (err) {
+      if (wakeUpTimer) clearTimeout(wakeUpTimer);
+      setServerWakingUp(false);
+      setError('Unable to reach SmartSlot server. Please ensure the backend server is running on port 5000.');
+    } finally {
+      if (wakeUpTimer) clearTimeout(wakeUpTimer);
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     loadInitialData();
   }, []);
 
@@ -74,20 +137,21 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
     }
   }, [step]);
 
-  // Fetch slot availability when service, staff, or date changes
+  // Fetch slot availability when services, staff, or date changes
   useEffect(() => {
-    if (selectedService && selectedDate && step === 3) {
+    if (selectedServices.length > 0 && selectedDate && step === 3) {
       fetchSlots();
     }
-  }, [selectedService, selectedStaffId, selectedDate, step]);
+  }, [serviceIdsParam, selectedStaffId, selectedDate, step]);
 
   const fetchSlots = async () => {
     try {
       setLoading(true);
       setError(null);
       setSelectedSlot(null);
+      setHoldInfo(null);
       const data = await api.getAvailability(
-        selectedService.id,
+        serviceIdsParam,
         selectedDate,
         selectedStaffId,
         null,
@@ -101,12 +165,14 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
     }
   };
 
-  // Handle slot selection with temporary hold
+  // Handle slot selection with temporary hold and error recovery
   const handleSelectSlot = async (slot) => {
     setSelectedSlot(slot);
+    setError(null);
     try {
       const hold = await api.holdSlot({
-        serviceId: selectedService.id,
+        serviceId: selectedServices[0]?.id,
+        serviceIds: serviceIdsParam,
         staffId: selectedStaffId,
         date: selectedDate,
         startTime: slot.startTime,
@@ -114,17 +180,62 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
       });
       setHoldInfo(hold);
     } catch (err) {
-      // Slot was held or conflict
-      setError(err.message);
+      setSelectedSlot(null);
+      setHoldInfo(null);
+      setError(`Slot hold notice: ${err.message || 'This slot is unavailable or just reserved by another customer.'}`);
       fetchSlots();
     }
   };
 
-  // Submit final booking
+  // Real-time inline field validation
+  const validateField = (name, value) => {
+    let err = null;
+    if (name === 'name') {
+      if (!value || value.trim().length < 2) {
+        err = 'Full name is required (minimum 2 characters).';
+      }
+    }
+    if (name === 'email') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!value || !emailRegex.test(value.trim())) {
+        err = 'Please enter a valid email address (e.g. name@example.com).';
+      }
+    }
+    if (name === 'phone') {
+      const cleanPhone = value.replace(/\D/g, '');
+      if (!value || cleanPhone.length < 7 || cleanPhone.length > 15) {
+        err = 'Please enter a valid mobile number (7 to 15 digits).';
+      }
+    }
+    setFieldErrors(prev => ({ ...prev, [name]: err }));
+    return err;
+  };
+
+  // Toggle service selection (supports selecting 1, 2, or more services at a time)
+  const handleToggleService = (service) => {
+    setSelectedServices(prev => {
+      const exists = prev.some(s => s.id === service.id);
+      if (exists) {
+        return prev.filter(s => s.id !== service.id);
+      } else {
+        return [...prev, service];
+      }
+    });
+    setSelectedStaffId('any'); // Reset specialist selection when services change
+    setSelectedSlot(null);
+    setHoldInfo(null);
+  };
+
+  // Submit final booking with Idempotency Key
   const handleConfirmBooking = async (e) => {
     e.preventDefault();
-    if (!customerDetails.name || !customerDetails.email || !customerDetails.phone) {
-      setError('Please provide your name, email, and phone number.');
+
+    const nameErr = validateField('name', customerDetails.name);
+    const emailErr = validateField('email', customerDetails.email);
+    const phoneErr = validateField('phone', customerDetails.phone);
+
+    if (nameErr || emailErr || phoneErr) {
+      setError('Please correct the validation errors in your contact details before submitting.');
       return;
     }
 
@@ -133,19 +244,21 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
       setError(null);
 
       const payload = {
-        serviceId: selectedService.id,
+        serviceId: selectedServices[0]?.id,
+        serviceIds: serviceIdsParam,
         staffId: selectedStaffId,
         date: selectedDate,
         startTime: selectedSlot.startTime,
-        customerName: customerDetails.name,
-        customerEmail: customerDetails.email,
-        customerPhone: customerDetails.phone,
-        vehicleDetails: customerDetails.vehicle,
-        customerNotes: customerDetails.notes,
-        sessionId
+        customerName: customerDetails.name.trim(),
+        customerEmail: customerDetails.email.trim(),
+        customerPhone: customerDetails.phone.trim(),
+        vehicleDetails: customerDetails.vehicle.trim(),
+        customerNotes: customerDetails.notes.trim(),
+        sessionId,
+        idempotencyKey
       };
 
-      const result = await api.createAppointment(payload);
+      const result = await api.createAppointment(payload, idempotencyKey);
       setConfirmedBooking(result);
       setStep(5);
 
@@ -170,12 +283,12 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
     ? services
     : services.filter(s => s.category === selectedCategory);
 
-  // Sort staff: certified specialists for this service first, then other workshop specialists
-  const sortedStaff = selectedService
-    ? [...staffList].sort((a, b) => {
-        const aCert = a.services?.some(s => s.id === selectedService.id) ? 1 : 0;
-        const bCert = b.services?.some(s => s.id === selectedService.id) ? 1 : 0;
-        return bCert - aCert;
+  // Filter staff: ONLY show specialists qualified for ALL selected services
+  const qualifiedStaff = selectedServices.length > 0
+    ? staffList.filter(s => {
+        if (!s.services || s.services.length === 0) return false;
+        const staffServiceIds = s.services.map(srv => srv.id);
+        return selectedServices.every(sel => staffServiceIds.includes(sel.id));
       })
     : staffList;
 
@@ -241,8 +354,8 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
         </div>
       )}
 
-      {/* Error alert banner */}
-      {error && (
+      {/* Error alert banner (shown during checkout steps or when services are loaded) */}
+      {error && (services.length > 0 || step > 1) && (
         <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 flex items-start gap-3 animate-shake">
           <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-600" />
           <div className="text-sm">
@@ -253,13 +366,28 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
         </div>
       )}
 
-      {/* STEP 1: SERVICE SELECTION */}
+      {/* STEP 1: SERVICE SELECTION (Multi-Service Support) */}
       {step === 1 && (
         <div>
           <div className="text-center mb-6">
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Select Service</h1>
-            <p className="text-slate-500 text-sm mt-1">Choose from our precision vehicle care and diagnostic operations.</p>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Select Services</h1>
+            <p className="text-slate-500 text-sm mt-1">
+              Select one or more services for your appointment. Combine multiple services (e.g. Oil Change + Brake Service) into a single visit.
+            </p>
           </div>
+
+          {/* Render Cold-Start Server Wake Up Banner */}
+          {serverWakingUp && (
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-center gap-3 text-xs text-blue-900 animate-fadeIn">
+              <RefreshCw className="w-5 h-5 animate-spin text-blue-600 flex-shrink-0" />
+              <div>
+                <p className="font-bold">Waking up SmartSlot Workshop Server...</p>
+                <p className="text-blue-700 text-[11px] mt-0.5">
+                  Cloud hosting instances (e.g. Render free tier) take approximately 20–25s to spin up on initial request. Your session will load automatically.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Category Filter Pills */}
           <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-6 scrollbar-none">
@@ -278,72 +406,168 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
             ))}
           </div>
 
-          {/* Services Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredServices.map(service => {
-              const isSelected = selectedService?.id === service.id;
-              return (
-                <div
-                  key={service.id}
-                  onClick={() => setSelectedService(service)}
-                  className={`p-5 rounded-2xl border-2 transition-all cursor-pointer relative bg-white hover:shadow-md ${
-                    isSelected
-                      ? 'border-blue-600 bg-blue-50/20 ring-2 ring-blue-500/10'
-                      : 'border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
-                        {service.category}
-                      </span>
-                      <h3 className="font-bold text-slate-900 text-base mt-2">{service.name}</h3>
-                      <p className="text-slate-500 text-xs mt-1.5 line-clamp-2 leading-relaxed">{service.description}</p>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <span className="text-lg font-black text-slate-900">{formatINR(service.price)}</span>
-                      <div className="flex items-center gap-1 text-slate-500 text-xs mt-1 justify-end">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>{service.duration_minutes}m</span>
+          {/* Loading Skeleton */}
+          {loading && services.length === 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="p-5 rounded-2xl border border-slate-200 bg-white animate-pulse space-y-3">
+                  <div className="flex justify-between items-center">
+                    <div className="h-4 bg-slate-200 rounded w-24"></div>
+                    <div className="h-5 bg-slate-200 rounded w-16"></div>
+                  </div>
+                  <div className="h-5 bg-slate-200 rounded w-3/4"></div>
+                  <div className="h-3 bg-slate-100 rounded w-full"></div>
+                  <div className="h-3 bg-slate-100 rounded w-4/5"></div>
+                  <div className="h-8 bg-slate-100 rounded-xl w-full mt-3"></div>
+                </div>
+              ))}
+            </div>
+          ) : error && services.length === 0 ? (
+            /* Connection Error with Retry Button */
+            <div className="py-12 px-6 text-center bg-white rounded-2xl border border-rose-200 shadow-xs">
+              <AlertCircle className="w-10 h-10 text-rose-500 mx-auto mb-3" />
+              <h3 className="text-base font-bold text-slate-900">Unable to Connect to SmartSlot Backend</h3>
+              <p className="text-xs text-slate-600 mt-1.5 max-w-md mx-auto leading-relaxed">
+                The backend API server on <span className="font-mono bg-slate-100 text-slate-800 px-1 py-0.5 rounded text-[11px]">http://localhost:5000</span> is not responding (or is warming up from a cloud cold start).
+              </p>
+              <button
+                onClick={loadInitialData}
+                className="mt-4 px-5 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-xs hover:bg-blue-700 transition-all inline-flex items-center gap-2 shadow-xs cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Retry Server Connection</span>
+              </button>
+            </div>
+          ) : (
+            /* Services Grid */
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredServices.map(service => {
+                const isSelected = selectedServices.some(s => s.id === service.id);
+                const selectedIndex = selectedServices.findIndex(s => s.id === service.id);
+                return (
+                  <div
+                    key={service.id}
+                    onClick={() => handleToggleService(service)}
+                    className={`p-5 rounded-2xl border-2 transition-all cursor-pointer relative bg-white hover:shadow-md ${
+                      isSelected
+                        ? 'border-blue-600 bg-blue-50/20 ring-2 ring-blue-500/10'
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                            {service.category}
+                          </span>
+                          {isSelected && (
+                            <span className="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full flex items-center gap-1">
+                              <Check className="w-3 h-3" />
+                              <span>Added {selectedServices.length > 1 ? `#${selectedIndex + 1}` : ''}</span>
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="font-bold text-slate-900 text-base mt-2">{service.name}</h3>
+                        <p className="text-slate-500 text-xs mt-1.5 line-clamp-2 leading-relaxed">{service.description}</p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <span className="text-lg font-black text-slate-900">{formatINR(service.price)}</span>
+                        <div className="flex items-center gap-1 text-slate-500 text-xs mt-1 justify-end">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{service.duration_minutes}m</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                    <span className="flex items-center gap-1">
-                      <Shield className="w-3.5 h-3.5 text-emerald-600" />
-                      {service.qualified_technicians_count} Specialists Certified
-                    </span>
-                    <span className={`font-semibold ${isSelected ? 'text-blue-600' : 'text-slate-400'}`}>
-                      {isSelected ? 'Selected ✓' : 'Select'}
-                    </span>
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                      <span className="flex items-center gap-1">
+                        <Shield className="w-3.5 h-3.5 text-emerald-600" />
+                        {service.qualified_technicians_count} Specialists Certified
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleService(service);
+                        }}
+                        className={`font-semibold px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-blue-600 text-white hover:bg-blue-700'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        {isSelected ? '✓ Added' : '+ Add Service'}
+                      </button>
+                    </div>
                   </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Step 1 Actions / Selected Services Bar */}
+          {selectedServices.length > 0 ? (
+            <div className="mt-8 p-4 bg-slate-900 text-white rounded-2xl shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4 animate-fadeIn">
+              <div className="w-full sm:w-auto">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <span className="text-xs font-bold uppercase tracking-wider text-blue-400 bg-blue-950 px-2 py-0.5 rounded">
+                    {selectedServices.length} {selectedServices.length === 1 ? 'Service Selected' : 'Services Selected'}
+                  </span>
+                  <span className="text-xs text-slate-300">
+                    Combined Time: <strong className="text-white">{totalDuration} mins</strong>
+                  </span>
+                  <span className="text-xs text-slate-300">
+                    Total: <strong className="text-emerald-400 font-bold">{formatINR(totalPrice)}</strong>
+                  </span>
                 </div>
-              );
-            })}
-          </div>
-
-          {/* Step 1 Actions */}
-          <div className="mt-8 flex justify-end">
-            <button
-              disabled={!selectedService}
-              onClick={() => setStep(2)}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm shadow-md shadow-blue-500/20 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-            >
-              <span>Continue to Specialist</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
+                <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
+                  {selectedServices.map(s => (
+                    <span
+                      key={s.id}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-slate-800 text-xs text-slate-200 border border-slate-700"
+                    >
+                      <span>{s.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleService(s)}
+                        className="text-slate-400 hover:text-rose-400 font-bold cursor-pointer text-sm"
+                        title="Remove service"
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <button
+                onClick={() => setStep(2)}
+                className="w-full sm:w-auto flex-shrink-0 flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm shadow-md shadow-blue-500/20 hover:bg-blue-700 transition-all cursor-pointer"
+              >
+                <span>Continue to Specialist ({selectedServices.length})</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="mt-8 flex justify-end">
+              <button
+                disabled={true}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm shadow-md shadow-blue-500/20 opacity-40 cursor-not-allowed transition-all"
+              >
+                <span>Select At Least 1 Service</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {/* STEP 2: SPECIALIST SELECTION */}
-      {step === 2 && selectedService && (
+      {step === 2 && selectedServices.length > 0 && (
         <div>
           <div className="text-center mb-6">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Choose Your Specialist</h1>
             <p className="text-slate-500 text-sm mt-1">
-              Select a certified technician for <span className="font-semibold text-blue-600">{selectedService.name}</span>, or let us auto-assign the best available slot.
+              Select a certified technician for <span className="font-semibold text-blue-600">{combinedServiceNames}</span> ({totalDuration} mins), or let us auto-assign the best available slot.
             </p>
           </div>
 
@@ -382,16 +606,15 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
               </div>
             </div>
 
-            {/* Option B: Active Specialists from Bay Roster */}
-            {sortedStaff.length === 0 ? (
+            {/* Option B: Certified Specialists for this Service */}
+            {qualifiedStaff.length === 0 ? (
               <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-300 text-center text-slate-500 text-xs">
-                No individual technicians registered yet. "Any Available Specialist" will auto-assign when slots are generated.
+                No individual technician is certified for all {selectedServices.length} selected services together. "Any Available Specialist" will auto-assign when slots are generated.
               </div>
             ) : (
-              sortedStaff.map(staff => {
+              qualifiedStaff.map(staff => {
                 const isSelected = selectedStaffId === staff.id;
                 const workingSummary = getStaffWorkingSummary(staff.schedules);
-                const isCertified = staff.services?.some(srv => srv.id === selectedService.id);
                 return (
                   <div
                     key={staff.id}
@@ -415,16 +638,10 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
                             <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
                               {staff.role}
                             </span>
-                            {isCertified ? (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                <span>Certified Specialist</span>
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                                Workshop Specialist
-                              </span>
-                            )}
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              <span>Certified Specialist</span>
+                            </span>
                           </div>
                           <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{staff.bio}</p>
                           <div className="flex items-center gap-1.5 mt-1.5 text-xs text-slate-600 font-medium">
@@ -449,14 +666,14 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
           <div className="mt-8 flex justify-between">
             <button
               onClick={() => setStep(1)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-semibold text-sm hover:bg-slate-50 transition-all"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-semibold text-sm hover:bg-slate-50 transition-all cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back</span>
             </button>
             <button
               onClick={() => setStep(3)}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm shadow-md shadow-blue-500/20 hover:bg-blue-700 transition-all"
+              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm shadow-md shadow-blue-500/20 hover:bg-blue-700 transition-all cursor-pointer"
             >
               <span>Select Date & Time</span>
               <ArrowRight className="w-4 h-4" />
@@ -466,12 +683,12 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
       )}
 
       {/* STEP 3: DATE & TIME SLOT PICKER */}
-      {step === 3 && selectedService && (
+      {step === 3 && selectedServices.length > 0 && (
         <div>
           <div className="text-center mb-6">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Select Date & Time Slot</h1>
             <p className="text-slate-500 text-sm mt-1">
-              Real-time availability for <span className="font-semibold text-blue-600">{selectedService.name}</span> ({selectedService.duration_minutes} mins)
+              Real-time availability for <span className="font-semibold text-blue-600">{combinedServiceNames}</span> ({totalDuration} mins total)
             </p>
             <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-700">
               <User className="w-3.5 h-3.5 text-blue-600" />
@@ -517,7 +734,7 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
 
           {/* Slots View */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+            <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-blue-600" />
                 <span className="font-bold text-slate-800 text-sm">
@@ -527,11 +744,25 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
               <button
                 onClick={fetchSlots}
                 disabled={loading}
-                className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1"
+                className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
                 <span>Refresh</span>
               </button>
+            </div>
+
+            {/* Clear Slot Status Legend */}
+            <div className="flex items-center gap-4 text-xs text-slate-600 mb-4 pb-2.5 border-b border-slate-100 flex-wrap">
+              <span className="font-semibold text-slate-700">Indicators:</span>
+              <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Available
+              </span>
+              <span className="inline-flex items-center gap-1.5 font-medium text-amber-700">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Held in Checkout
+              </span>
+              <span className="inline-flex items-center gap-1.5 font-medium text-slate-500">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Booked / Full
+              </span>
             </div>
 
             {loading ? (
@@ -635,14 +866,25 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
                   </div>
                 </div>
 
-                {/* Checkout Hold Notice */}
+                {/* Checkout Hold Notice with Live 5-Minute Countdown */}
                 {selectedSlot && (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-amber-600" />
-                      <span>Slot <strong>{selectedSlot.startTime}</strong> held temporarily for your checkout (5 minutes).</span>
+                  <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs flex items-center justify-between shadow-xs">
+                    <div className="flex items-center gap-2.5">
+                      <Clock className="w-4 h-4 text-amber-600 flex-shrink-0 animate-pulse" />
+                      <div>
+                        <span className="font-semibold">
+                          Slot <strong>{selectedSlot.startTime}</strong> held temporarily for your checkout.
+                        </span>
+                        <p className="text-[11px] text-amber-700 mt-0.5">
+                          Complete step 4 before timer expires to guarantee your booking.
+                        </p>
+                      </div>
                     </div>
-                    <span className="font-semibold text-amber-700">Reserved</span>
+                    <div className="text-right flex-shrink-0 ml-3">
+                      <span className="inline-block px-2.5 py-1 rounded-lg bg-amber-200/80 text-amber-900 font-bold text-xs tracking-wide border border-amber-300">
+                        ⏱ {timeLeft !== null ? formatTimeLeft(timeLeft) : '5:00'}
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -679,7 +921,7 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
       )}
 
       {/* STEP 4: CUSTOMER DETAILS & REVIEW */}
-      {step === 4 && selectedService && selectedSlot && (
+      {step === 4 && selectedServices.length > 0 && selectedSlot && (
         <div>
           <div className="text-center mb-6">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Your Details & Confirmation</h1>
@@ -689,6 +931,20 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Slot Hold Timer Alert Card */}
+            <div className="md:col-span-3 p-3.5 bg-blue-50 border border-blue-200 rounded-2xl flex items-center justify-between text-xs text-blue-900 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <Clock className="w-4 h-4 text-blue-600 animate-pulse flex-shrink-0" />
+                <span>
+                  Slot <strong>{selectedSlot.startTime} – {selectedSlot.endTime}</strong> on <strong>{selectedDate}</strong> is reserved for {selectedServices.length === 1 ? selectedServices[0].name : `${selectedServices.length} selected services`}.
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 font-bold text-blue-800 bg-white px-2.5 py-1 rounded-lg border border-blue-200 shadow-2xs">
+                <span>Hold expires in:</span>
+                <span className="text-blue-600 font-mono text-sm">{timeLeft !== null ? formatTimeLeft(timeLeft) : '5:00'}</span>
+              </div>
+            </div>
+
             {/* Form */}
             <div className="md:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
               <form onSubmit={handleConfirmBooking} className="space-y-4">
@@ -701,10 +957,24 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
                       required
                       placeholder="e.g. Michael Jordan"
                       value={customerDetails.name}
-                      onChange={e => setCustomerDetails({ ...customerDetails, name: e.target.value })}
-                      className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      onChange={e => {
+                        setCustomerDetails({ ...customerDetails, name: e.target.value });
+                        if (fieldErrors.name) validateField('name', e.target.value);
+                      }}
+                      onBlur={e => validateField('name', e.target.value)}
+                      className={`w-full pl-10 pr-4 py-2 rounded-xl border text-sm transition-all focus:outline-none focus:ring-2 ${
+                        fieldErrors.name
+                          ? 'border-rose-400 bg-rose-50/20 focus:ring-rose-500'
+                          : 'border-slate-300 focus:ring-blue-500'
+                      }`}
                     />
                   </div>
+                  {fieldErrors.name && (
+                    <p className="text-rose-600 text-xs mt-1.5 font-medium flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span>{fieldErrors.name}</span>
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -717,10 +987,24 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
                         required
                         placeholder="michael@example.com"
                         value={customerDetails.email}
-                        onChange={e => setCustomerDetails({ ...customerDetails, email: e.target.value })}
-                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        onChange={e => {
+                          setCustomerDetails({ ...customerDetails, email: e.target.value });
+                          if (fieldErrors.email) validateField('email', e.target.value);
+                        }}
+                        onBlur={e => validateField('email', e.target.value)}
+                        className={`w-full pl-10 pr-4 py-2 rounded-xl border text-sm transition-all focus:outline-none focus:ring-2 ${
+                          fieldErrors.email
+                            ? 'border-rose-400 bg-rose-50/20 focus:ring-rose-500'
+                            : 'border-slate-300 focus:ring-blue-500'
+                        }`}
                       />
                     </div>
+                    {fieldErrors.email && (
+                      <p className="text-rose-600 text-xs mt-1.5 font-medium flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>{fieldErrors.email}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">Phone Number (for SMS Reminder) *</label>
@@ -731,10 +1015,24 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
                         required
                         placeholder="+1 (555) 000-0000"
                         value={customerDetails.phone}
-                        onChange={e => setCustomerDetails({ ...customerDetails, phone: e.target.value })}
-                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        onChange={e => {
+                          setCustomerDetails({ ...customerDetails, phone: e.target.value });
+                          if (fieldErrors.phone) validateField('phone', e.target.value);
+                        }}
+                        onBlur={e => validateField('phone', e.target.value)}
+                        className={`w-full pl-10 pr-4 py-2 rounded-xl border text-sm transition-all focus:outline-none focus:ring-2 ${
+                          fieldErrors.phone
+                            ? 'border-rose-400 bg-rose-50/20 focus:ring-rose-500'
+                            : 'border-slate-300 focus:ring-blue-500'
+                        }`}
                       />
                     </div>
+                    {fieldErrors.phone && (
+                      <p className="text-rose-600 text-xs mt-1.5 font-medium flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>{fieldErrors.phone}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -799,13 +1097,29 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
             {/* Live Summary Card */}
             <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-md flex flex-col justify-between">
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-950 px-2 py-0.5 rounded">
-                  Booking Summary
-                </span>
-                <h3 className="font-extrabold text-lg mt-2">{selectedService.name}</h3>
-                <p className="text-slate-400 text-xs mt-1">{selectedService.category}</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-950 px-2 py-0.5 rounded">
+                    Booking Summary
+                  </span>
+                  <span className="text-xs font-semibold text-slate-300">
+                    {selectedServices.length} {selectedServices.length === 1 ? 'Service' : 'Services'}
+                  </span>
+                </div>
 
-                <div className="my-5 border-t border-slate-800 pt-4 space-y-3 text-xs">
+                {/* List of all selected services */}
+                <div className="mt-3.5 space-y-2 pb-3 border-b border-slate-800">
+                  {selectedServices.map(s => (
+                    <div key={s.id} className="flex items-start justify-between text-xs py-0.5">
+                      <div>
+                        <span className="text-white font-semibold block">{s.name}</span>
+                        <span className="text-[11px] text-slate-400">{s.duration_minutes} mins • {s.category}</span>
+                      </div>
+                      <span className="text-slate-200 font-bold ml-2">{formatINR(s.price)}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="my-4 space-y-2.5 text-xs">
                   <div className="flex items-center justify-between text-slate-300">
                     <span className="flex items-center gap-1.5">
                       <Calendar className="w-3.5 h-3.5 text-blue-400" />
@@ -832,15 +1146,15 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
                   <div className="flex items-center justify-between text-slate-300">
                     <span className="flex items-center gap-1.5">
                       <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                      Service Duration
+                      Total Duration
                     </span>
-                    <span className="font-semibold text-white">{selectedService.duration_minutes} Minutes</span>
+                    <span className="font-semibold text-white">{totalDuration} Minutes</span>
                   </div>
                 </div>
 
                 <div className="border-t border-slate-800 pt-4 flex items-center justify-between">
                   <span className="text-xs text-slate-400">Total Estimated</span>
-                  <span className="text-2xl font-black text-white">₹{Number(selectedService.price).toLocaleString('en-IN')}</span>
+                  <span className="text-2xl font-black text-emerald-400">{formatINR(totalPrice)}</span>
                 </div>
               </div>
 
@@ -922,7 +1236,7 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
             <button
               onClick={() => {
                 setStep(1);
-                setSelectedService(null);
+                setSelectedServices([]);
                 setSelectedSlot(null);
                 setConfirmedBooking(null);
               }}

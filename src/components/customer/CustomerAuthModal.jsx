@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { User, Mail, Phone, Car, Lock, X, RefreshCw, CheckCircle2, AlertCircle, ArrowRight, ArrowLeft, ShieldCheck, Shield } from 'lucide-react';
 
-export default function CustomerAuthModal({ onAdminLoginSuccess, onCustomerLoginSuccess }) {
-  const { authModalState, closeCustomerAuth, login, register, adminLogin } = useAuth();
-  const [activeTab, setActiveTab] = useState('register'); // 'register' | 'login' | 'admin'
+export default function CustomerAuthModal({ onAdminLoginSuccess, onCustomerLoginSuccess, onStaffLoginSuccess }) {
+  const { authModalState, closeCustomerAuth, login, register, adminLogin, staffLogin } = useAuth();
+  const [activeTab, setActiveTab] = useState('register'); // 'register' | 'login' | 'staff' | 'admin'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -19,9 +19,11 @@ export default function CustomerAuthModal({ onAdminLoginSuccess, onCustomerLogin
     confirm_password: ''
   });
 
-  // Admin Form state
+  // Admin & Staff Form state
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [staffEmail, setStaffEmail] = useState('');
+  const [staffPassword, setStaffPassword] = useState('');
 
   useEffect(() => {
     if (authModalState.isOpen) {
@@ -121,6 +123,29 @@ export default function CustomerAuthModal({ onAdminLoginSuccess, onCustomerLogin
     }
   };
 
+  const handleStaffLoginSubmit = async (e) => {
+    e.preventDefault();
+    if (!staffEmail.trim() || !staffPassword) {
+      setError('Please provide technician email and password.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      await staffLogin(staffEmail.trim(), staffPassword);
+      setSuccess('Technician verified! Loading assigned bay roster...');
+      setTimeout(() => {
+        closeCustomerAuth();
+        if (onStaffLoginSuccess) onStaffLoginSuccess();
+      }, 600);
+    } catch (err) {
+      setError(err.message || 'Staff authentication failed. Verify technician credentials.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleFillDemoCustomer = () => {
     setFormData({
       ...formData,
@@ -136,6 +161,12 @@ export default function CustomerAuthModal({ onAdminLoginSuccess, onCustomerLogin
     setError(null);
   };
 
+  const handleFillDemoStaff = () => {
+    setStaffEmail('marcus@smartslot.service');
+    setStaffPassword('staff123');
+    setError(null);
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl max-w-md w-full p-6 sm:p-7 shadow-xl border border-slate-200 max-h-[92vh] overflow-y-auto">
@@ -145,11 +176,13 @@ export default function CustomerAuthModal({ onAdminLoginSuccess, onCustomerLogin
             <h3 className="text-base sm:text-lg font-bold text-slate-900">
               {activeTab === 'register' && 'Create Customer Account'}
               {activeTab === 'login' && 'Customer Sign In'}
+              {activeTab === 'staff' && 'Technician / Staff Sign In'}
               {activeTab === 'admin' && 'Administrator Sign In'}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
               {activeTab === 'register' && 'Register with your basic details to book and track services.'}
               {activeTab === 'login' && 'Sign in to access your appointments and live order status.'}
+              {activeTab === 'staff' && 'Sign in as a technician to view and manage your assigned bay roster.'}
               {activeTab === 'admin' && 'Authorized operations personnel & workshop facility access.'}
             </p>
           </div>
@@ -161,7 +194,7 @@ export default function CustomerAuthModal({ onAdminLoginSuccess, onCustomerLogin
           </button>
         </div>
 
-        {/* Customer Tab Toggle (ONLY shown for customer registration & sign in) */}
+        {/* Role Tab Toggle */}
         {activeTab !== 'admin' && (
           <div className="flex rounded-lg bg-slate-100 p-1 my-4 text-xs font-medium">
             <button
@@ -171,7 +204,7 @@ export default function CustomerAuthModal({ onAdminLoginSuccess, onCustomerLogin
                 activeTab === 'register' ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Register New Account
+              Register
             </button>
             <button
               type="button"
@@ -180,7 +213,16 @@ export default function CustomerAuthModal({ onAdminLoginSuccess, onCustomerLogin
                 activeTab === 'login' ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Customer Sign In
+              Customer
+            </button>
+            <button
+              type="button"
+              onClick={() => { setActiveTab('staff'); setError(null); }}
+              className={`flex-1 py-1.5 rounded-md transition-all ${
+                activeTab === 'staff' ? 'bg-white text-blue-700 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Technician
             </button>
           </div>
         )}
@@ -376,7 +418,89 @@ export default function CustomerAuthModal({ onAdminLoginSuccess, onCustomerLogin
           </form>
         )}
 
-        {/* TAB 3: ADMIN SIGN IN */}
+        {/* TAB 3: STAFF / TECHNICIAN SIGN IN */}
+        {activeTab === 'staff' && (
+          <form onSubmit={handleStaffLoginSubmit} className="space-y-3.5 text-xs">
+            <div className="p-3 rounded-xl bg-blue-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Wrench className="w-4 h-4 text-blue-300" />
+                <span className="font-semibold text-xs">Technician Staff Portal</span>
+              </div>
+              <span className="text-[10px] uppercase font-bold text-blue-300 tracking-wider">
+                Assigned Bay
+              </span>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Staff Email Address *</label>
+              <div className="relative">
+                <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="email"
+                  required
+                  placeholder="marcus@smartslot.service"
+                  value={staffEmail}
+                  onChange={e => setStaffEmail(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Staff Password *</label>
+              <div className="relative">
+                <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="password"
+                  required
+                  placeholder="••••••••"
+                  value={staffPassword}
+                  onChange={e => setStaffPassword(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full mt-2 py-2.5 rounded-xl bg-blue-600 text-white font-medium text-xs sm:text-sm hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-xs"
+            >
+              {loading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Verifying Technician...</span>
+                </>
+              ) : (
+                <>
+                  <Wrench className="w-3.5 h-3.5" />
+                  <span>Sign In as Technician</span>
+                </>
+              )}
+            </button>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
+              <button
+                type="button"
+                onClick={handleFillDemoStaff}
+                className="text-slate-500 hover:text-slate-800 underline"
+              >
+                Auto-fill: Marcus (Diagnostic)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setActiveTab('login'); setError(null); }}
+                className="text-slate-600 hover:text-slate-900 font-medium flex items-center gap-1"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Customer Sign In</span>
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* TAB 4: ADMIN SIGN IN */}
         {activeTab === 'admin' && (
           <form onSubmit={handleAdminLoginSubmit} className="space-y-3.5 text-xs">
             <div className="p-3 rounded-xl bg-slate-900 text-white flex items-center justify-between">

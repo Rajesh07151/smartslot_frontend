@@ -65,7 +65,12 @@ export default function AnalyticsView() {
             </div>
           </div>
           <span className="text-2xl font-bold text-slate-900">{formatINR(kpis.realizedRevenue)}</span>
-          <p className="text-[11px] text-slate-400 mt-2">Active service orders</p>
+          <p className="text-[11px] text-emerald-700 font-medium mt-1">Completed orders only</p>
+          {kpis.projectedRevenue > 0 && (
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              +{formatINR(kpis.projectedRevenue)} active pipeline
+            </p>
+          )}
         </div>
 
         {/* Avg Staff Utilization */}
@@ -95,7 +100,7 @@ export default function AnalyticsView() {
             <span className="text-xs text-slate-500">({kpis.noShowAppointments} missed)</span>
           </div>
           <span className="inline-block mt-2 text-[10px] font-medium px-2 py-0.5 rounded bg-purple-50 text-purple-700">
-            SMS Reminder Active
+            Past visits resolved
           </span>
         </div>
 

@@ -10,17 +10,17 @@ export default function AdminHeader({ isPreviewMode, onTogglePreview }) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Admin Brand */}
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-white/10 text-white flex items-center justify-center border border-white/15">
-              <ShieldCheck className="w-5 h-5 text-emerald-400" />
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white/10 text-white flex items-center justify-center border border-white/15">
+              <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-base sm:text-lg tracking-tight text-white">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="font-bold text-sm sm:text-base md:text-lg tracking-tight text-white">
                   Smart<span className="text-blue-400">Slot</span>
                 </span>
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Operations Console
+                <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hidden xs:inline-block">
+                  Console
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 hidden sm:block">
@@ -30,11 +30,11 @@ export default function AdminHeader({ isPreviewMode, onTogglePreview }) {
           </div>
 
           {/* Right Action Tools */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3">
             {/* Preview Customer View Toggle */}
             <button
               onClick={onTogglePreview}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
                 isPreviewMode
                   ? 'bg-amber-500 text-slate-950 font-semibold shadow-xs'
                   : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
@@ -43,7 +43,7 @@ export default function AdminHeader({ isPreviewMode, onTogglePreview }) {
             >
               <Eye className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">
-                {isPreviewMode ? 'Return to Admin Dashboard' : 'Preview Customer Portal'}
+                {isPreviewMode ? 'Return to Admin' : 'Customer View'}
               </span>
             </button>
 
@@ -66,10 +66,10 @@ export default function AdminHeader({ isPreviewMode, onTogglePreview }) {
             <button
               onClick={logout}
               title="Sign Out of Admin Console"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-950 hover:text-rose-300 hover:border-rose-800 text-slate-300 border border-slate-700 text-xs font-medium transition-colors"
+              className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-950 hover:text-rose-300 hover:border-rose-800 text-slate-300 border border-slate-700 text-xs font-medium transition-colors"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span>Sign Out</span>
+              <span className="hidden sm:inline">Sign Out</span>
             </button>
           </div>
         </div>

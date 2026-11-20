@@ -7,10 +7,11 @@ import AdminDashboard from './components/admin/AdminDashboard';
 import AdminHeader from './components/admin/AdminHeader';
 import AdminLoginGate from './components/admin/AdminLoginGate';
 import CustomerAuthModal from './components/customer/CustomerAuthModal';
+import StaffDashboard from './components/staff/StaffDashboard';
 import { ShieldCheck, User, LayoutDashboard, Lock, LogIn, LogOut, Eye } from 'lucide-react';
 
 function AppContent() {
-  const { user, isAuthenticated, isAdmin, logout, openCustomerAuth } = useAuth();
+  const { user, isAuthenticated, isAdmin, isStaff, logout, openCustomerAuth } = useAuth();
   const [previewCustomerView, setPreviewCustomerView] = useState(false);
 
   // Determine initial tab from URL hash (#manage, #book) or path (/manage)
@@ -85,6 +86,17 @@ function AppContent() {
     );
   }
 
+  // If logged in as Technician / Specialist Staff: Show Staff Operations Dashboard
+  if (isStaff) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col text-slate-800 font-sans">
+        <main className="flex-grow">
+          <StaffDashboard />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50/70 flex flex-col text-slate-800 font-sans">
       {/* Admin Preview Mode Banner (shown only when Admin explicitly toggles preview) */}
@@ -155,6 +167,7 @@ function AppContent() {
       <CustomerAuthModal
         onAdminLoginSuccess={() => setActiveTab('admin')}
         onCustomerLoginSuccess={() => setActiveTab('manage')}
+        onStaffLoginSuccess={() => setActiveTab('staff')}
       />
 
       {/* Footer */}

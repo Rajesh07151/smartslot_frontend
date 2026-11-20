@@ -5,7 +5,7 @@ import StatusBadge from '../common/StatusBadge';
 import { formatINR, formatFriendlyDate, formatDuration } from '../../utils/formatters';
 import {
   Search, Calendar, Clock, User, Car, Phone, Mail, FileText,
-  AlertTriangle, CheckCircle2, XCircle, ArrowRight, RefreshCw, Shield,
+  AlertTriangle, AlertCircle, CheckCircle2, XCircle, ArrowRight, RefreshCw, Shield,
   Check, Copy, Sparkles, LogIn, Wrench, ChevronRight, PlayCircle
 } from 'lucide-react';
 
@@ -132,7 +132,15 @@ export default function ManageBooking({ prefillReference = null }) {
   };
 
   const handleConfirmReschedule = async () => {
-    if (!selectedNewSlot || !activeAptModal) return;
+    if (!selectedNewSlot || !activeAptModal) {
+      setError('Please select an available slot time.');
+      return;
+    }
+
+    if (!rescheduleDate) {
+      setError('Please select a valid date for rescheduling.');
+      return;
+    }
 
     try {
       setRescheduleLoading(true);
@@ -141,7 +149,9 @@ export default function ManageBooking({ prefillReference = null }) {
         date: rescheduleDate,
         startTime: selectedNewSlot.startTime,
         staffId: activeAptModal.staff_id,
-        reason: rescheduleReason
+        reason: rescheduleReason,
+        bookingReference: activeAptModal.booking_reference,
+        phone: activeAptModal.customer_phone
       });
 
       setIsRescheduleOpen(false);
@@ -599,6 +609,13 @@ export default function ManageBooking({ prefillReference = null }) {
               Select a new date and time slot for <strong>{activeAptModal.booking_reference}</strong> with {activeAptModal.staff_name}.
             </p>
 
+            {error && (
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Select New Date</label>
@@ -627,18 +644,25 @@ export default function ManageBooking({ prefillReference = null }) {
                   <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1">
                     {rescheduleSlots.map(slot => {
                       const isSelected = selectedNewSlot?.startTime === slot.startTime;
+                      const isAvailable = slot.isAvailable !== false && slot.isBooked !== true;
                       return (
                         <button
                           key={slot.startTime}
                           type="button"
-                          onClick={() => setSelectedNewSlot(slot)}
+                          disabled={!isAvailable}
+                          onClick={() => isAvailable && setSelectedNewSlot(slot)}
                           className={`p-2 rounded-lg border text-center text-xs font-semibold transition-all ${
-                            isSelected
+                            !isAvailable
+                              ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
+                              : isSelected
                               ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
                               : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-800'
                           }`}
                         >
-                          {slot.startTime}
+                          <span className={!isAvailable ? 'line-through' : ''}>{slot.startTime}</span>
+                          {!isAvailable && (
+                            <span className="block text-[9px] text-rose-600 font-bold mt-0.5">Booked</span>
+                          )}
                         </button>
                       );
                     })}

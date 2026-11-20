@@ -56,6 +56,15 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
+  const staffLogin = async (email, password) => {
+    const data = await api.staffLogin(email, password);
+    setUser(data.user);
+    setToken(data.token);
+    localStorage.setItem('smartslot_user', JSON.stringify(data.user));
+    localStorage.setItem('smartslot_token', data.token);
+    return data.user;
+  };
+
   const register = async (payload) => {
     const data = await api.register(payload);
     setUser(data.user);
@@ -86,9 +95,11 @@ export function AuthProvider({ children }) {
     loading,
     isAuthenticated: !!user,
     isAdmin: user?.role === 'ADMIN',
+    isStaff: user?.role === 'STAFF',
     isCustomer: user?.role === 'CUSTOMER',
     login,
     adminLogin,
+    staffLogin,
     register,
     logout,
     authModalState,
