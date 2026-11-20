@@ -85,26 +85,95 @@ frontend/
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Local Setup & Development Instructions
 
-### 1. Installation
+### Prerequisites
+* **Node.js**: v18.0.0 or higher (v20+ recommended)
+* **npm**: v9.0.0 or higher
+* **Backend Running**: The SmartSlot backend should ideally be running locally on `http://localhost:5000` (or the frontend can connect to your deployed cloud backend).
+
+---
+
+### Step-by-Step Frontend Setup
+
+#### 1. Navigate to the Frontend Directory
 ```bash
 cd frontend
-npm install
 ```
 
-### 2. Development Server
+#### 2. Install Dependencies
+```bash
+npm install
+```
+This installs `react`, `react-dom`, `lucide-react`, `tailwindcss`, `@tailwindcss/vite`, `canvas-confetti`, and other development tools.
+
+#### 3. Development Proxy Configuration
+In `vite.config.js`, requests starting with `/api` are automatically forwarded to your local backend server:
+```javascript
+server: {
+  port: 3000,
+  proxy: {
+    '/api': {
+      target: 'http://localhost:5000',
+      changeOrigin: true,
+    }
+  }
+}
+```
+*(No manual environment variables needed for local development).*
+
+#### 4. Start the Local Frontend Dev Server
 ```bash
 npm run dev
 ```
-The application will start on **`http://localhost:3000`**.  
-The development server proxies `/api` calls directly to `http://localhost:5000`.
 
-### 3. Production Build
+Open your browser and navigate to:  
+👉 **`http://localhost:3000`**
+
+#### 5. Build for Production
+To generate the optimized static bundle in the `dist/` directory:
 ```bash
 npm run build
 ```
-Generates an optimized static bundle in `dist/` ready for deployment on Vercel, Netlify, or any static hosting platform.
+
+To preview the built production bundle locally:
+```bash
+npm run preview
+```
+
+---
+
+## 🏃‍♂️ How to Run Full-Stack Locally (Both Frontend & Backend)
+
+To test the entire SmartSlot platform on your local machine simultaneously:
+
+1. **Terminal 1 (Backend)**:
+   ```bash
+   cd backend
+   npm install
+   npm run seed
+   npm start
+   ```
+   *Runs API server on `http://localhost:5000`*
+
+2. **Terminal 2 (Frontend)**:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+   *Runs Vite client on `http://localhost:3000`*
+
+3. Open **`http://localhost:3000`** in your browser. All booking, slot hold, payment summaries, technician logins, and calendar exports will operate seamlessly with instant hot reload!
+
+---
+
+## 👤 Testing User Roles Locally
+
+* **Guest Customer**: Click **"Book Appointment"** to pick multiple services and test booking without creating an account.
+* **Registered Customer**: Click **"Sign In"** (`rajesh@example.com` / `customer123`) to view personal service history in **"My Bookings"**.
+* **Technician (Staff)**: Click the **"Technician Login"** button with the wrench icon in the top navigation bar (`david@smartslot.service` / `staff123` or `marcus@smartslot.service` / `staff123`) to open the assigned bay schedule.
+* **Administrator**: Click **"Sign In"** → **"Login as Admin"** (`admin@smartslot.service` / `admin123`) to access full KPI metrics, realized revenue cards, and technician management.
 
 ---
 
