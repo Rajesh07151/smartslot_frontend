@@ -4,7 +4,8 @@ import { formatINR } from '../../utils/formatters';
 import confetti from 'canvas-confetti';
 import {
   Wrench, Calendar, Clock, User, CheckCircle2, AlertCircle, ArrowRight, ArrowLeft,
-  Shield, Car, Sparkles, Phone, Mail, FileText, ChevronRight, Check, RefreshCw, QrCode
+  Shield, Car, Sparkles, Phone, Mail, FileText, ChevronRight, Check, RefreshCw, QrCode,
+  Copy, Download, Printer, X
 } from 'lucide-react';
 
 export default function BookingWizard({ onBookingSuccess, onManageBookingClick }) {
@@ -12,6 +13,8 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [slotHoldError, setSlotHoldError] = useState(null);
+  const [copiedRef, setCopiedRef] = useState(false);
   const [serverWakingUp, setServerWakingUp] = useState(false);
 
   // Data
@@ -168,6 +171,7 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
   // Handle slot selection with temporary hold and error recovery
   const handleSelectSlot = async (slot) => {
     setSelectedSlot(slot);
+    setSlotHoldError(null);
     setError(null);
     try {
       const hold = await api.holdSlot({
@@ -182,9 +186,59 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
     } catch (err) {
       setSelectedSlot(null);
       setHoldInfo(null);
-      setError(`Slot hold notice: ${err.message || 'This slot is unavailable or just reserved by another customer.'}`);
+      const friendlyHoldMsg = err.message || 'This slot was just reserved by another customer or is no longer available. Available times have been refreshed — please select another slot.';
+      setSlotHoldError(friendlyHoldMsg);
       fetchSlots();
     }
+  };
+
+  const handleCopyReference = (ref) => {
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(ref);
+    setCopiedRef(true);
+    setTimeout(() => setCopiedRef(false), 2000);
+  };
+
+  const handleDownloadCalendar = (booking) => {
+    if (!booking) return;
+    const dateParts = (booking.date || '').split('-');
+    if (dateParts.length !== 3) return;
+    const year = dateParts[0];
+    const month = dateParts[1];
+    const day = dateParts[2];
+
+    const [sh, sm] = (booking.startTime || '09:00').split(':');
+    const [eh, em] = (booking.endTime || '10:00').split(':');
+
+    const dtStart = `${year}${month}${day}T${sh}${sm}00`;
+    const dtEnd = `${year}${month}${day}T${eh}${em}00`;
+
+    const icsData = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//SmartSlot Workshop//EN',
+      'BEGIN:VEVENT',
+      `UID:${booking.bookingReference || Date.now()}@smartslot.service`,
+      `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+      `DTSTART:${dtStart}`,
+      `DTEND:${dtEnd}`,
+      `SUMMARY:SmartSlot Auto Care - ${booking.serviceName || 'Vehicle Service'}`,
+      `DESCRIPTION:Booking Reference: ${booking.bookingReference}\\nTechnician: ${booking.staffName || 'Specialist'}\\nVehicle: ${booking.vehicleDetails || 'Standard'}`,
+      'LOCATION:SmartSlot Certified Workshop Bay',
+      'STATUS:CONFIRMED',
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].join('\r\n');
+
+    const blob = new Blob([icsData], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `SmartSlot-${booking.bookingReference}.ics`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Real-time inline field validation
@@ -376,14 +430,14 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
             </p>
           </div>
 
-          {/* Render Cold-Start Server Wake Up Banner */}
+          {/* Workshop Server Initializing Banner */}
           {serverWakingUp && (
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-center gap-3 text-xs text-blue-900 animate-fadeIn">
               <RefreshCw className="w-5 h-5 animate-spin text-blue-600 flex-shrink-0" />
               <div>
-                <p className="font-bold">Waking up SmartSlot Workshop Server...</p>
+                <p className="font-bold">Connecting to SmartSlot Workshop Service...</p>
                 <p className="text-blue-700 text-[11px] mt-0.5">
-                  Cloud hosting instances (e.g. Render free tier) take approximately 20–25s to spin up on initial request. Your session will load automatically.
+                  Loading real-time technician bay schedules and service packages. Your session will connect automatically.
                 </p>
               </div>
             </div>
@@ -426,16 +480,16 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
             /* Connection Error with Retry Button */
             <div className="py-12 px-6 text-center bg-white rounded-2xl border border-rose-200 shadow-xs">
               <AlertCircle className="w-10 h-10 text-rose-500 mx-auto mb-3" />
-              <h3 className="text-base font-bold text-slate-900">Unable to Connect to SmartSlot Backend</h3>
+              <h3 className="text-base font-bold text-slate-900">Unable to Connect to SmartSlot Service</h3>
               <p className="text-xs text-slate-600 mt-1.5 max-w-md mx-auto leading-relaxed">
-                The backend API server on <span className="font-mono bg-slate-100 text-slate-800 px-1 py-0.5 rounded text-[11px]">http://localhost:5000</span> is not responding (or is warming up from a cloud cold start).
+                The workshop scheduling service is temporarily unreachable or re-connecting. Please check your internet connection or click Retry.
               </p>
               <button
                 onClick={loadInitialData}
                 className="mt-4 px-5 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-xs hover:bg-blue-700 transition-all inline-flex items-center gap-2 shadow-xs cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>Retry Server Connection</span>
+                <span>Retry Connection</span>
               </button>
             </div>
           ) : (
@@ -764,6 +818,24 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Booked / Full
               </span>
             </div>
+
+            {/* Inline Slot Hold Failure Alert */}
+            {slotHoldError && (
+              <div className="mb-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 flex items-start gap-3 animate-fadeIn">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600" />
+                <div className="text-xs">
+                  <p className="font-semibold text-amber-900">Slot Reservation Notice</p>
+                  <p className="text-amber-800 mt-0.5">{slotHoldError}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSlotHoldError(null)}
+                  className="ml-auto text-amber-500 hover:text-amber-800 p-1"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
 
             {loading ? (
               <div className="py-12 text-center text-slate-400">
@@ -1179,13 +1251,27 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
             Your service slot has been securely booked and allocated in our system.
           </p>
 
-          {/* Booking Reference Pill */}
+          {/* Booking Reference Pill with Copy Action */}
           <div className="my-6 p-4 rounded-2xl bg-slate-50 border border-slate-200 inline-block">
-            <span className="text-[11px] uppercase tracking-wider text-slate-400 font-bold block">Your Booking Reference</span>
-            <span className="font-mono text-2xl sm:text-3xl font-black text-blue-600 tracking-wider">
-              {confirmedBooking.bookingReference}
+            <span className="text-[11px] uppercase tracking-wider text-slate-400 font-bold block mb-1">
+              Your Booking Reference
             </span>
-            <p className="text-[11px] text-slate-500 mt-1">Keep this code to view status or reschedule anytime.</p>
+            <div className="flex items-center justify-center gap-2">
+              <span className="font-mono text-2xl sm:text-3xl font-black text-blue-600 tracking-wider">
+                {confirmedBooking.bookingReference}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleCopyReference(confirmedBooking.bookingReference)}
+                title="Copy reference code"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 transition-colors cursor-pointer"
+              >
+                {copiedRef ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">
+              {copiedRef ? <span className="text-emerald-600 font-semibold">Reference code copied to clipboard!</span> : 'Keep this code to view live status or reschedule anytime.'}
+            </p>
           </div>
 
           {/* Appointment Details Box */}
@@ -1214,23 +1300,52 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
             )}
           </div>
 
-          {/* Simulated Notification Notice */}
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs flex items-center gap-2.5 text-left mb-6">
-            <Mail className="w-4 h-4 text-blue-600 flex-shrink-0" />
+          {/* Confirmation & Notification Notice */}
+          <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-950 text-xs flex items-center gap-2.5 text-left mb-4 shadow-xs">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
             <div>
-              <p className="font-semibold">Simulated Email & SMS Notification Dispatched</p>
-              <p className="text-blue-700">A confirmation notice and automated 24h & 2h reminders have been logged in the communication pipeline.</p>
+              <p className="font-semibold text-emerald-900">Booking Confirmation & Service Reminders Dispatched</p>
+              <p className="text-emerald-700 mt-0.5">
+                A booking receipt and automated 24h & 2h reminders have been logged and dispatched to your contact details.
+              </p>
             </div>
           </div>
 
+          {/* Cancellation & Rescheduling Policy Notice */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl text-left text-xs text-slate-600 mb-6 space-y-1">
+            <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+              <Shield className="w-3.5 h-3.5 text-blue-600" />
+              <span>Complimentary Cancellation & Rescheduling</span>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              You may modify or cancel this booking free of charge up to 2 hours prior to your scheduled appointment. Upon cancellation, your reserved service bay is immediately released back to the workshop pool.
+            </p>
+          </div>
+
           {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 flex-wrap">
             <button
               onClick={() => onManageBookingClick && onManageBookingClick(confirmedBooking.bookingReference)}
-              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-900 text-white font-semibold text-xs sm:text-sm hover:bg-slate-800 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
             >
               <FileText className="w-4 h-4" />
-              <span>Manage / Reschedule Booking</span>
+              <span>Manage / Reschedule</span>
+            </button>
+
+            <button
+              onClick={() => handleDownloadCalendar(confirmedBooking)}
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-semibold text-xs sm:text-sm hover:bg-slate-50 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+            >
+              <Download className="w-4 h-4 text-slate-500" />
+              <span>Add to Calendar (.ics)</span>
+            </button>
+
+            <button
+              onClick={() => window.print()}
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-semibold text-xs sm:text-sm hover:bg-slate-50 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+            >
+              <Printer className="w-4 h-4 text-slate-500" />
+              <span>Print Summary</span>
             </button>
 
             <button
@@ -1240,9 +1355,9 @@ export default function BookingWizard({ onBookingSuccess, onManageBookingClick }
                 setSelectedSlot(null);
                 setConfirmedBooking(null);
               }}
-              className="w-full sm:w-auto px-6 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-semibold text-sm hover:bg-slate-50 transition-all"
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 text-slate-500 font-semibold text-xs sm:text-sm hover:bg-slate-100 transition-all"
             >
-              Book Another Appointment
+              Book Another
             </button>
           </div>
         </div>

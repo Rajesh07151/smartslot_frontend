@@ -114,6 +114,14 @@ export default function Navbar({ activeTab, setActiveTab }) {
             ) : (
               <div className="flex items-center gap-1.5">
                 <button
+                  onClick={() => handleOpenAuth('staff')}
+                  title="Technician Portal Sign In"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors border border-blue-200/80 shadow-xs"
+                >
+                  <Wrench className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Technician Login</span>
+                </button>
+                <button
                   onClick={() => handleOpenAuth('login')}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors"
                 >

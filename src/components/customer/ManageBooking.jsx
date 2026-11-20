@@ -151,7 +151,8 @@ export default function ManageBooking({ prefillReference = null }) {
         staffId: activeAptModal.staff_id,
         reason: rescheduleReason,
         bookingReference: activeAptModal.booking_reference,
-        phone: activeAptModal.customer_phone
+        phone: activeAptModal.customer_phone,
+        email: activeAptModal.customer_email
       });
 
       setIsRescheduleOpen(false);
@@ -188,7 +189,11 @@ export default function ManageBooking({ prefillReference = null }) {
     try {
       setCancelLoading(true);
       setError(null);
-      await api.cancelAppointment(activeAptModal.id, cancelReason);
+      await api.cancelAppointment(activeAptModal.id, cancelReason, {
+        bookingReference: activeAptModal.booking_reference,
+        phone: activeAptModal.customer_phone,
+        email: activeAptModal.customer_email
+      });
 
       setIsCancelOpen(false);
       setSuccessMessage(`Appointment ${activeAptModal.booking_reference} has been cancelled.`);
@@ -713,9 +718,16 @@ export default function ManageBooking({ prefillReference = null }) {
               <AlertTriangle className="w-5 h-5" />
             </div>
             <h2 className="text-lg font-bold text-slate-900 mb-1">Cancel Booking {activeAptModal.booking_reference}?</h2>
-            <p className="text-xs text-slate-500 mb-4">
+            <p className="text-xs text-slate-500 mb-3">
               Your service slot for <strong>{activeAptModal.service_name}</strong> on {formatFriendlyDate(activeAptModal.date)} at {activeAptModal.start_time} will be released.
             </p>
+
+            <div className="p-3 bg-amber-50/90 border border-amber-200/80 rounded-xl text-xs text-amber-900 mb-4">
+              <p className="font-semibold mb-0.5">Cancellation Policy</p>
+              <p className="text-[11px] text-amber-800">
+                Cancellations are complimentary up to 2 hours prior to your scheduled time. Your reserved workshop bay and technician will be immediately made available to other customers.
+              </p>
+            </div>
 
             <div className="space-y-3">
               <label className="block text-xs font-semibold text-slate-700">Reason for cancellation</label>

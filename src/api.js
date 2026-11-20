@@ -265,11 +265,16 @@ export const api = {
     return json.data;
   },
 
-  async cancelAppointment(id, reason) {
+  async cancelAppointment(id, reason, verification = {}) {
     const res = await fetch(`${BASE_URL}/appointments/${id}/cancel`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ reason })
+      body: JSON.stringify({
+        reason,
+        bookingReference: verification.bookingReference,
+        phone: verification.phone,
+        email: verification.email
+      })
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || 'Failed to cancel appointment');

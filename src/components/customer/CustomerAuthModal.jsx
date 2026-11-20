@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { User, Mail, Phone, Car, Lock, X, RefreshCw, CheckCircle2, AlertCircle, ArrowRight, ArrowLeft, ShieldCheck, Shield } from 'lucide-react';
+import { User, Mail, Phone, Car, Lock, X, RefreshCw, CheckCircle2, AlertCircle, ArrowRight, ArrowLeft, ShieldCheck, Shield, Wrench } from 'lucide-react';
 
 export default function CustomerAuthModal({ onAdminLoginSuccess, onCustomerLoginSuccess, onStaffLoginSuccess }) {
   const { authModalState, closeCustomerAuth, login, register, adminLogin, staffLogin } = useAuth();
@@ -146,26 +146,7 @@ export default function CustomerAuthModal({ onAdminLoginSuccess, onCustomerLogin
     }
   };
 
-  const handleFillDemoCustomer = () => {
-    setFormData({
-      ...formData,
-      email: 'harsha121@gmail.com',
-      password: 'harsha123'
-    });
-    setError(null);
-  };
 
-  const handleFillDemoAdmin = () => {
-    setAdminEmail('admin@smartslot.service');
-    setAdminPassword('admin123');
-    setError(null);
-  };
-
-  const handleFillDemoStaff = () => {
-    setStaffEmail('marcus@smartslot.service');
-    setStaffPassword('staff123');
-    setError(null);
-  };
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
@@ -397,15 +378,7 @@ export default function CustomerAuthModal({ onAdminLoginSuccess, onCustomerLogin
             </button>
 
             {/* Switch to Admin Login Option */}
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
-              <button
-                type="button"
-                onClick={handleFillDemoCustomer}
-                className="text-slate-500 hover:text-slate-800 underline"
-              >
-                Auto-fill: Harsha
-              </button>
-
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end text-[11px]">
               <button
                 type="button"
                 onClick={() => { setActiveTab('admin'); setError(null); }}
@@ -480,13 +453,7 @@ export default function CustomerAuthModal({ onAdminLoginSuccess, onCustomerLogin
             </button>
 
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
-              <button
-                type="button"
-                onClick={handleFillDemoStaff}
-                className="text-slate-500 hover:text-slate-800 underline"
-              >
-                Auto-fill: Marcus (Diagnostic)
-              </button>
+              <span className="text-slate-400">Authorized workshop personnel only</span>
 
               <button
                 type="button"
@@ -561,15 +528,9 @@ export default function CustomerAuthModal({ onAdminLoginSuccess, onCustomerLogin
               )}
             </button>
 
-            {/* Admin autofill and back to customer login */}
+            {/* Back to customer login */}
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
-              <button
-                type="button"
-                onClick={handleFillDemoAdmin}
-                className="text-slate-500 hover:text-slate-800 underline"
-              >
-                Auto-fill Admin Demo
-              </button>
+              <span className="text-slate-400">Operations security portal</span>
 
               <button
                 type="button"
