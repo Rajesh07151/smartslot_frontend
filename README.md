@@ -20,13 +20,15 @@ Modern, responsive web application for automotive service scheduling, bay alloca
 * **Cancellation & Rescheduling Policy**: Clear policy card highlighting complimentary cancellation up to 2 hours prior to arrival.
 
 ### 3. Track & Manage Bookings Portal
-* **Live Search**: Query bookings by Reference Code (`SLOT-XXXX`) or customer phone number.
-* **Reschedule Modal**: Choose a new date and time from live availability slots with conflict prevention.
+* **Strict Authentication Barrier**: To safeguard customer privacy and prevent unauthorized access, viewing, tracking, rescheduling, or canceling appointments requires logging into your verified account.
+* **Customer Isolation ("My Bookings")**: Logged-in customers automatically see all active and past vehicle service bookings associated with their account.
+* **Booking Reference Search**: Quickly filter or inspect a specific booking among your owned appointments using your reference code (`SLOT-XXXX`).
+* **Reschedule Modal**: Choose a new date and time from live availability slots with conflict prevention and qualification validation.
 * **Complimentary Cancellation**: Cancel scheduled appointments with instant release of the workshop bay back to the public pool.
-* **Customer Isolation**: Logged-in customers automatically see their vehicle service history under **"My Bookings"**.
+* **Complete Session Purge on Logout**: Signing out immediately purges JWT tokens, customer credentials, and all `smartslot_*` keys from `localStorage` and `sessionStorage`.
 
 ### 4. Technician / Staff Bay Portal
-* **Dedicated Desktop & Mobile Login**: Access technician login directly from the navigation bar.
+* **Dedicated Desktop & Mobile Login**: Access technician login directly from the navigation bar (wrench icon).
 * **Assigned Bay Roster**: Technicians can only view and manage appointments assigned to their specific bay.
 * **Live Job Lifecycle**: Update status seamlessly from `CONFIRMED` &rarr; `IN_PROGRESS` &rarr; `COMPLETED` or `NO_SHOW`.
 * **Internal Technician Notes**: Add service notes and checklist comments directly to job records.
@@ -170,10 +172,10 @@ To test the entire SmartSlot platform on your local machine simultaneously:
 
 ## 👤 Testing User Roles Locally
 
-* **Guest Customer**: Click **"Book Appointment"** to pick multiple services and test booking without creating an account.
-* **Registered Customer**: Click **"Sign In"** (`rajesh@example.com` / `customer123`) to view personal service history in **"My Bookings"**.
-* **Technician (Staff)**: Click the **"Technician Login"** button with the wrench icon in the top navigation bar (`david@smartslot.service` / `staff123` or `marcus@smartslot.service` / `staff123`) to open the assigned bay schedule.
-* **Administrator**: Click **"Sign In"** → **"Login as Admin"** (`admin@smartslot.service` / `admin123`) to access full KPI metrics, realized revenue cards, and technician management.
+* **Guest Customer**: Click **"Book Appointment"** to pick multiple services and test real-time booking and checkout slot holds.
+* **Registered Customer**: Click **"Sign In"** (`rajesh@example.com` / `customer123` or `harsha121@gmail.com` / `harsha123`) to view personal service history, track order status, and reschedule/cancel bookings in **"My Bookings"**.
+* **Technician (Staff)**: Click the **"Technician"** button with the wrench icon in the top navigation bar (`david@smartslot.service` / `staff123` or `marcus@smartslot.service` / `staff123`) to open the assigned bay schedule and test status updates (`IN_PROGRESS`, `COMPLETED`, `NO_SHOW`).
+* **Administrator**: Click **"Sign In"** &rarr; **"Login as Admin"** (`admin@smartslot.service` / `admin123`) to access full KPI metrics, realized revenue cards, and technician management.
 
 ---
 
