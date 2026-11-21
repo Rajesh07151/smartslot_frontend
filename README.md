@@ -42,6 +42,42 @@ Modern, responsive web application for automotive service scheduling, bay alloca
 
 ---
 
+## 🏗️ System Architecture & Workflow Diagram
+
+```mermaid
+flowchart TD
+    subgraph ClientApp["React 19 / Vite Frontend (Vercel)"]
+        direction TB
+        Wiz["Booking Wizard (4 Steps)<br/>Multi-Service Selection & Pricing"]
+        Grid["Slot Grid & 5-Min Hold Timer<br/>Interactive 14-Day Calendar"]
+        MyBookings["My Bookings & Management<br/>Strict Authentication Barrier"]
+        TechDash["Technician Bay Roster<br/>Status: In-Progress / Completed / No-Show"]
+        AdminDash["Admin Operations Console<br/>Realized Revenue KPIs & Shift Manager"]
+    end
+
+    subgraph NetworkRouting["Vercel Edge Rewrite"]
+        Proxy["/api/* &rarr; Render Backend API"]
+    end
+
+    subgraph BackendAPI["Node.js / Express Backend (Render)"]
+        direction TB
+        AuthMid["Security Middleware & Ownership Verification"]
+        Engine["Allocation Engine (Duration, Shift & Lunch Overlap)"]
+        DB[("Better-SQLite3 Database (WAL Mode)<br/>Safe Persistent Seeder (INSERT OR IGNORE)")]
+    end
+
+    Wiz --> Proxy
+    Grid --> Proxy
+    MyBookings --> Proxy
+    TechDash --> Proxy
+    AdminDash --> Proxy
+    Proxy --> AuthMid
+    AuthMid --> Engine
+    Engine --> DB
+```
+
+---
+
 ## 🛠️ Technology Stack
 
 | Layer | Tool | Purpose |
