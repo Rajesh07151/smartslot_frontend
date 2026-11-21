@@ -79,6 +79,18 @@ export function AuthProvider({ children }) {
     setToken(null);
     localStorage.removeItem('smartslot_user');
     localStorage.removeItem('smartslot_token');
+    try {
+      // Clear all SmartSlot keys from local and session storage
+      sessionStorage.clear();
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('smartslot')) {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch {
+      // Ignore storage restrictions
+    }
+    window.location.hash = 'book';
   };
 
   const openCustomerAuth = (defaultTab = 'register') => {

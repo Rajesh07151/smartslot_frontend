@@ -5,7 +5,7 @@ import StatusBadge from '../common/StatusBadge';
 import { formatINR, formatFriendlyDate } from '../../utils/formatters';
 import {
   Calendar, Clock, User, CheckCircle2, AlertTriangle, RefreshCw,
-  LogOut, PlayCircle, CheckCircle, FileText, Wrench, Shield, Car, Phone
+  LogOut, PlayCircle, CheckCircle, FileText, Wrench, Shield, Car, Phone, XCircle
 } from 'lucide-react';
 
 export default function StaffDashboard() {
@@ -207,14 +207,24 @@ export default function StaffDashboard() {
                     {/* Quick Status Action Buttons */}
                     <div className="flex items-center gap-2 flex-wrap">
                       {apt.status === 'CONFIRMED' && (
-                        <button
-                          disabled={updatingId === apt.id}
-                          onClick={() => handleUpdateStatus(apt.id, 'IN_PROGRESS')}
-                          className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs flex items-center gap-1.5 transition-all shadow-xs"
-                        >
-                          <PlayCircle className="w-3.5 h-3.5" />
-                          <span>Start Job</span>
-                        </button>
+                        <>
+                          <button
+                            disabled={updatingId === apt.id}
+                            onClick={() => handleUpdateStatus(apt.id, 'IN_PROGRESS')}
+                            className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                          >
+                            <PlayCircle className="w-3.5 h-3.5" />
+                            <span>Start Job</span>
+                          </button>
+                          <button
+                            disabled={updatingId === apt.id}
+                            onClick={() => handleUpdateStatus(apt.id, 'NO_SHOW')}
+                            className="px-3 py-1.5 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>Mark No-Show</span>
+                          </button>
+                        </>
                       )}
 
                       {apt.status === 'IN_PROGRESS' && (

@@ -204,7 +204,9 @@ export const api = {
   },
 
   async lookupAppointment(query) {
-    const res = await fetch(`${BASE_URL}/appointments/lookup/${encodeURIComponent(query)}`);
+    const res = await fetch(`${BASE_URL}/appointments/lookup/${encodeURIComponent(query)}`, {
+      headers: getHeaders()
+    });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || 'Appointment not found');
     return json.data;
